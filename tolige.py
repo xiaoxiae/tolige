@@ -1,4 +1,3 @@
-"""A TOdo LIst GEnerator."""
 import os
 from dataclasses import dataclass, field
 from typing import *
