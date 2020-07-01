@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 from dataclasses import dataclass, field
 from typing import *
@@ -152,8 +154,8 @@ if selected_sets == []:
 print()
 
 # write to file
-output_path = input("Output file path (defaults to TODO.txt): ")
-with open("TODO.txt" if output_path == "" else output_path, "w") as f:
+output_path = input("Output file path (defaults to TODO): ")
+with open("TODO" if output_path == "" else output_path, "w") as f:
     for s in map(int, selected_sets):
         for line in sets[s]:
             f.write(line + "\n")
