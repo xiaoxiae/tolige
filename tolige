@@ -94,6 +94,10 @@ if "*" in selected_sets:
 
 print()
 
+# parse conditions and variables
+conditions = {}
+variables = {}
+
 # parse each of the sets
 k = 0
 while k < len(selected_sets):
@@ -112,10 +116,6 @@ while k < len(selected_sets):
         print(f"WARNING: {s} is out of range, skipping.")
         selected_sets.pop(k)
         continue
-
-    # parse conditions and variables
-    conditions = {}
-    variables = {}
 
     i = 0
     while i < len(sets[s]):
