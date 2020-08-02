@@ -3,12 +3,13 @@
 import os
 from dataclasses import dataclass, field
 from typing import *
+from subprocess import check_output
 from re import sub
 
 
 def ask_for_variable(match_object, variables={}):
     """This function is called in a regex sub. Note that it relies on the fact that
-    'variables' is not repeatedly instantiated on each method call."""
+    the 'variables' dictionary is persistent."""
     variable = match_object.group(1)
 
     if variable not in variables:
@@ -18,147 +19,127 @@ def ask_for_variable(match_object, variables={}):
     return variables[variable]
 
 
-def ask_for_condition(condition: str):
+def ask_for_condition(condition: str, conditions={}):
     """Ask the user for a condition."""
+    if condition in conditions:
+        return conditions[condition]
+
     out = None
     while out not in ("y", "n"):
         out = input(condition.capitalize() + "? [y/n]: ")
 
-    return out == "y"
+    result = out == "y"
+
+    conditions[condition] = result
+    return result
 
 
-@dataclass
-class Set:
-    name: str
-    items: List[str] = field(default_factory=list)
+class NamedList(List):
+    """A class representing a list with a name."""
 
-    def __getitem__(self, i: int):
-        return self.items[i]
+    def __init__(self, name):
+        super().__init__(self)
 
-    def __setitem__(self, i: int, item: str):
-        self.items[i] = item
-
-    def __len__(self):
-        return len(self.items)
-
-    def pop(self, i: int):
-        return self.items.pop(i)
+        self.name = name
 
 
-# the path to the configuration
 name = "tolige.config"
 base = os.path.dirname(os.path.realpath(__file__))
 
-sets = []
+lists = []
 with open(os.path.join(base, name), "r") as f:
-    current_set = None
+    current_list = None
 
-    for line in filter(lambda x: len(x.strip()) != 0, f):
+    for i, line in enumerate(f.read().splitlines()):
         stripped_line = line.strip()
-        # skip comments
-        if stripped_line.startswith("#"):
+
+        # skip comments and empty lines
+        if stripped_line.startswith("#") or len(stripped_line) == 0:
             continue
 
-        # add a line (only right-stripped, since it could be tab-indented)
+        # add a line (only right-stripped, since it could be tab-indented, which is ok)
         elif not line[0].isalpha():
-            current_set.items.append(line.rstrip())
+            if current_list is None:
+                exit(f"ERROR on line {i}: List name missing.")
 
-        # else add a set
+            current_list.append(line.rstrip())
+
+        # else create a new list (and possibly add the old one)
         else:
-            if current_set is not None:
-                sets.append(current_set)
+            if current_list is not None:
+                lists.append(current_list)
 
-            current_set = Set(stripped_line)
+            current_list = NamedList(stripped_line)
 
 # add the remaining set
-if current_set is not None:
-    sets.append(current_set)
+if current_list is not None:
+    lists.append(current_list)
+else:
+    exit("ERROR: No lists parsed, add some before running the script.")
 
-# check for empty sets
-if len(sets) == 0:
-    exit("ERROR: No sets parsed -- add some before running the script.")
-
-# the "*" is for all sets
-set_names = ", ".join(list(f"{s.name}: {i}" for i, s in enumerate(sets)) + ["*"])
-
-selected_sets = list(
-    filter(
-        lambda x: len(x) != 0,
-        map(lambda x: x.strip(), input(f"Select sets ({set_names}): ").split(","),),
-    )
-)
-
-# special * for all sets
-if "*" in selected_sets:
-    selected_sets = [str(i) for i in range(len(sets))]
-
+print("Parsed lists")
+print("------------")
+for i, set in enumerate(lists):
+    print(f"{i}: {set.name}")
 print()
 
-# parse conditions and variables
+
+selection = [number.strip() for number in input("Select: ").split(",")]
+
+selected_lists = (
+    [str(i) for i in range(len(lists))]
+    if "*" in selection  # special * for all lists
+    else selection
+)
+
+
 conditions = {}
-variables = {}
-
-# parse each of the sets
-k = 0
-while k < len(selected_sets):
-    s = selected_sets[k]
-
+for number in selected_lists:
     # check number
-    if not all(c.isdigit() for c in s):
-        print(f"WARNING: '{s}' is not an integer, skipping.")
-        selected_sets.pop(k)
-        continue
+    if not all(d.isdigit() for d in number):
+        exit(f"ERROR: '{number}' is not an integer.")
 
-    s = int(s)
+    number = int(number)
 
     # check range
-    if not 0 <= s < len(sets):
-        print(f"WARNING: {s} is out of range, skipping.")
-        selected_sets.pop(k)
-        continue
+    if not number < len(lists):
+        exit(f"ERROR: {number} is out of range.")
 
-    i = 0
-    while i < len(sets[s]):
-        item = sets[s][i]
+    while i < len(lists[number]):
+        line = lists[number][i]
 
-        # re-sub the variables
-        sets[s][i] = sub(r"{(.+?)}", ask_for_variable, item)
+        # sub the variables
+        lists[number][i] = sub(r"{(.+?)}", ask_for_variable, line)
 
         # check for conditions
-        if item.startswith("["):
+        if line.startswith("["):
             # check for incomplete bracket
-            if "]" not in item:
-                print(f"WARNING: Malformed line '{item}', skipping.")
-                sets[s].pop(i)
-                continue
+            if "]" not in line:
+                exit(f"ERROR: Malformed condition: '{line}'")
 
             # remove the condition
-            c = item[1 : item.index("]")]
-            sets[s][i] = item[item.index("]") + 1 :]
+            c = line[1 : line.index("]")]
+            lists[number][i] = line[line.index("]") + 1 :]
 
             # if the condition has not been met first, ask for it
-            if c not in conditions:
-                conditions[c] = ask_for_condition(c)
+            conditions[c] = ask_for_condition(c)
 
             # include/exclude the condition line depending on the answer
             if not conditions[c]:
-                sets[s].pop(i)
+                lists[number].pop(i)
                 i -= 1
 
         i += 1
-    k += 1
 
-if selected_sets == []:
-    exit("ERROR: no sets selected, exiting.")
-
-print()
+if len(selected_lists) == 0:
+    exit("ERROR: no lists selected.")
 
 # write to file
 output_path = input("Output file path (defaults to TODO): ")
 with open("TODO" if output_path == "" else output_path, "w") as f:
-    for s in map(int, selected_sets):
-        for line in sets[s]:
+    for s in map(int, selected_lists):
+        for line in lists[s]:
             f.write(line + "\n")
 
-        # separate sets by an empty line
+        # separate lists by an empty line
         f.write("\n")
