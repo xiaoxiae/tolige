@@ -28,10 +28,8 @@ def ask_for_condition(condition: str, conditions={}):
     while out not in ("y", "n"):
         out = input(condition.capitalize() + "? [y/n]: ")
 
-    result = out == "y"
-
-    conditions[condition] = result
-    return result
+    conditions[condition] = out == "y"
+    return conditions[condition]
 
 
 class NamedList(List):
@@ -93,9 +91,8 @@ selected_lists = (
 )
 
 
-conditions = {}
 for number in selected_lists:
-    # check number
+    # check that the number is actually a number
     if not all(d.isdigit() for d in number):
         exit(f"ERROR: '{number}' is not an integer.")
 
@@ -105,11 +102,10 @@ for number in selected_lists:
     if not number < len(lists):
         exit(f"ERROR: {number} is out of range.")
 
+    i = 0
     while i < len(lists[number]):
-        line = lists[number][i]
-
         # sub the variables
-        lists[number][i] = sub(r"{(.+?)}", ask_for_variable, line)
+        line = sub(r"{(.+?)}", ask_for_variable, lists[number][i])
 
         # check for conditions
         if line.startswith("["):
@@ -119,16 +115,14 @@ for number in selected_lists:
 
             # remove the condition
             c = line[1 : line.index("]")]
-            lists[number][i] = line[line.index("]") + 1 :]
-
-            # if the condition has not been met first, ask for it
-            conditions[c] = ask_for_condition(c)
+            line = line[line.index("]") + 1 :]
 
             # include/exclude the condition line depending on the answer
-            if not conditions[c]:
+            if not ask_for_condition(c):
                 lists[number].pop(i)
-                i -= 1
+                continue
 
+        lists[number][i] = line
         i += 1
 
 if len(selected_lists) == 0:
